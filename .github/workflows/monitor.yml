@@ -1,0 +1,87 @@
+name: Monitor Machu Picchu
+
+on:
+  # Permite ejecutar una prueba manual desde GitHub.
+  workflow_dispatch:
+
+  # Se ejecuta cada 10 minutos.
+  # Usamos los minutos 7, 17, 27... para evitar la mayor
+  # congestión que suele producirse al inicio de cada hora.
+  schedule:
+    - cron: "7,17,27,37,47,57 * * * *"
+
+# Necesario para guardar state.json dentro del repositorio.
+permissions:
+  contents: write
+
+# Evita que dos revisiones se ejecuten simultáneamente.
+concurrency:
+  group: monitor-machu-picchu
+  cancel-in-progress: false
+
+jobs:
+  revisar-disponibilidad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      TARGET_CIRCUIT: "Circuito 2"
+      TARGET_ROUTE: "Ruta 2-A"
+      TARGET_ROUTE_NAME: "Machupicchu Clásico"
+      TARGET_DATE: "2026-08-13"
+      REQUIRED_TICKETS: "4"
+
+      # Las pruebas manuales informan también cuando no hay cupos.
+      # Las revisiones automáticas solo avisan cuando encuentran entradas.
+      NOTIFY_STATUS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Revisar disponibilidad
+        run: npm run monitor
+
+      - name: Guardar estado del monitor
+        if: always()
+        run: |
+          if [ ! -f state.json ]; then
+            echo "No se generó state.json."
+            exit 0
+          fi
+
+          git config user.name "Monitor Machu Picchu"
+          git config user.email "actions@github.com"
+
+          git add state.json
+
+          if git diff --cached --quiet; then
+            echo "El estado no cambió."
+            exit 0
+          fi
+
+          git commit -m "Actualizar estado del monitor [skip ci]"
+          git push
+
+      - name: Guardar captura de diagnóstico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostico-${{ github.run_number }}
+          path: debug.png
+          if-no-files-found: ignore
+          retention-days: 7
