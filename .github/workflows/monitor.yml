@@ -1,17 +1,19 @@
 name: Monitor Machu Picchu
 
 on:
-  # Permite iniciar una prueba manual.
+  # Permite ejecutar una prueba manual.
   workflow_dispatch:
 
-  # Ejecuta el monitor aproximadamente cada 10 minutos.
+  # Ejecuta el monitor cada cinco minutos.
+  # Posteriormente el código distinguirá entre
+  # alertas configuradas cada 5 o cada 10 minutos.
   schedule:
-    - cron: "7,17,27,37,47,57 * * * *"
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
 
 permissions:
   contents: write
 
-# Evita que dos revisiones se ejecuten al mismo tiempo.
+# Evita dos ejecuciones simultáneas.
 concurrency:
   group: monitor-machu-picchu
   cancel-in-progress: false
@@ -19,19 +21,19 @@ concurrency:
 jobs:
   revisar-disponibilidad:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     env:
+      # Conexión con Telegram.
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       CHAT_ID: ${{ secrets.CHAT_ID }}
 
-      # Solo alerta si un horario tiene al menos
-      # esta cantidad de entradas.
-      REQUIRED_TICKETS: "4"
+      # Conexión con la API de Apps Script.
+      ALERTS_API_URL: ${{ secrets.ALERTS_API_URL }}
+      MONITOR_API_KEY: ${{ secrets.MONITOR_API_KEY }}
 
-      # La ejecución manual envía un resumen,
-      # aunque no encuentre disponibilidad.
-      # La automática solo avisa cuando aparecen cupos.
+      # En la ejecución manual se enviará un resumen,
+      # incluso cuando no se encuentren entradas.
       NOTIFY_STATUS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
 
     steps:
@@ -41,9 +43,10 @@ jobs:
           ref: main
 
       - name: Configurar Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
+          package-manager-cache: false
 
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
@@ -51,7 +54,7 @@ jobs:
       - name: Instalar Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Revisar disponibilidad
+      - name: Revisar alertas y disponibilidad
         run: npm run monitor
 
       - name: Guardar estado del monitor
@@ -68,7 +71,7 @@ jobs:
           git add state.json
 
           if git diff --cached --quiet; then
-            echo "La disponibilidad no cambió."
+            echo "El estado del monitor no cambió."
             exit 0
           fi
 
