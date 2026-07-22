@@ -1,8 +1,8 @@
 {
   "version": 2,
   "alerts": {
-    "A20260722161210FAC735": {
-      "lastCheckedAt": "2026-07-22T22:18:04.089Z",
+    "A20260722182542334A11": {
+      "lastCheckedAt": "2026-07-22T23:27:35.406Z",
       "targetDate": "2026-07-23",
       "availableKeys": [],
       "allRoutesFailed": false,
