@@ -17,8 +17,8 @@ const CONFIG = Object.freeze({
   timeZone: 'America/Lima',
   stateFile: 'state.json',
   diagnosticDirectory: 'diagnostico',
-  pageTimeoutMs: 60000,
-  actionTimeoutMs: 30000
+  pageTimeoutMs: 60_000,
+  actionTimeoutMs: 30_000
 });
 
 
@@ -38,7 +38,7 @@ const ROUTES = Object.freeze([
     code: '1-B',
     circuitText: 'Circuito 1',
     routeText: 'Ruta 1-B',
-    name: 'Terraza Superior'
+    name: 'Terraza superior'
   },
   {
     code: '1-C',
@@ -62,7 +62,7 @@ const ROUTES = Object.freeze([
     code: '2-B',
     circuitText: 'Circuito 2',
     routeText: 'Ruta 2-B',
-    name: 'Terraza Inferior'
+    name: 'Terraza inferior'
   },
   {
     code: '3-A',
@@ -74,7 +74,7 @@ const ROUTES = Object.freeze([
     code: '3-B',
     circuitText: 'Circuito 3',
     routeText: 'Ruta 3-B',
-    name: 'Realeza Diseñada'
+    name: 'Realeza diseñada'
   },
   {
     code: '3-C',
@@ -180,6 +180,8 @@ function normalizeText(value) {
 function getDatePartsInLima(
   date = new Date()
 ) {
+  const values = {};
+
   const parts =
     new Intl.DateTimeFormat(
       'en-CA',
@@ -197,8 +199,6 @@ function getDatePartsInLima(
           '2-digit'
       }
     ).formatToParts(date);
-
-  const values = {};
 
   for (
     const part of parts
@@ -236,7 +236,7 @@ function getTomorrowInLima() {
   const today =
     getDatePartsInLima();
 
-  const tomorrow =
+  const date =
     new Date(
       Date.UTC(
         today.year,
@@ -246,13 +246,13 @@ function getTomorrowInLima() {
     );
 
   const year =
-    tomorrow.getUTCFullYear();
+    date.getUTCFullYear();
 
   const month =
-    tomorrow.getUTCMonth() + 1;
+    date.getUTCMonth() + 1;
 
   const day =
-    tomorrow.getUTCDate();
+    date.getUTCDate();
 
   return {
     iso:
@@ -262,8 +262,7 @@ function getTomorrowInLima() {
       '-' +
       String(day).padStart(2, '0'),
 
-    date:
-      tomorrow
+    date
   };
 }
 
@@ -309,7 +308,7 @@ function getLimaTimestamp() {
 function parseCalendarMonth(
   label
 ) {
-  const cleanLabel =
+  const clean =
     normalizeText(label)
       .toUpperCase()
       .replace(
@@ -318,7 +317,7 @@ function parseCalendarMonth(
       );
 
   const parts =
-    cleanLabel.split(' ');
+    clean.split(' ');
 
   if (
     parts.length < 2
@@ -331,9 +330,7 @@ function parseCalendarMonth(
 
   const year =
     Number.parseInt(
-      parts[
-        parts.length - 1
-      ],
+      parts.at(-1),
       10
     );
 
@@ -365,14 +362,6 @@ function validateConfiguration() {
   ) {
     throw new Error(
       'REQUIRED_TICKETS debe ser un número entero mayor que cero.'
-    );
-  }
-
-  if (
-    ROUTES.length === 0
-  ) {
-    throw new Error(
-      'No existen rutas configuradas.'
     );
   }
 }
@@ -439,6 +428,27 @@ async function saveDiagnostic(
         );
       }
     );
+
+  const html =
+    await page
+      .content()
+      .catch(
+        () => ''
+      );
+
+  if (
+    html
+  ) {
+    fs.writeFileSync(
+      CONFIG.diagnosticDirectory +
+      '/' +
+      safeName +
+      '.html',
+
+      html,
+      'utf8'
+    );
+  }
 }
 
 
@@ -506,34 +516,32 @@ function loadState() {
 
 function saveState(
   targetDate,
-  availableItems,
+  availableKeys,
   allRoutesFailed
 ) {
   const state = {
     targetDate,
 
     availableKeys:
-      availableItems
-        .map(
-          item =>
-            item.key
+      [
+        ...new Set(
+          availableKeys
         )
-        .sort(),
+      ].sort(),
 
     allRoutesFailed:
-      allRoutesFailed === true,
-
-    lastCheck:
-      new Date().toISOString()
+      allRoutesFailed === true
   };
 
   fs.writeFileSync(
     CONFIG.stateFile,
+
     JSON.stringify(
       state,
       null,
       2
     ) + '\n',
+
     'utf8'
   );
 }
@@ -584,7 +592,9 @@ function splitTelegramMessage(
 
     remaining =
       remaining
-        .slice(splitAt)
+        .slice(
+          splitAt
+        )
         .trim();
   }
 
@@ -687,6 +697,31 @@ async function sendTelegram(
 
 
 /* ============================================================
+ * PETICIONES QUE PODEMOS IGNORAR
+ * ============================================================
+ */
+
+function isIgnoredRequest(
+  url
+) {
+  return (
+    url.includes(
+      'google-analytics.com'
+    ) ||
+    url.includes(
+      'googletagmanager.com'
+    ) ||
+    url.includes(
+      'doubleclick.net'
+    ) ||
+    url.includes(
+      'sentry.io'
+    )
+  );
+}
+
+
+/* ============================================================
  * CARGA DE TU BOLETO
  * ============================================================
  */
@@ -709,122 +744,51 @@ async function waitForPageReady(
         CONFIG.pageTimeoutMs
     });
 
-  await page.waitForFunction(
-    () => {
-      const visibleSelects =
-        Array
-          .from(
-            document.querySelectorAll(
-              'mat-select'
-            )
-          )
-          .filter(
-            element => {
-              const rect =
-                element
-                  .getBoundingClientRect();
+  await page
+    .locator(
+      'mat-select'
+    )
+    .nth(0)
+    .waitFor({
+      state:
+        'visible',
 
-              const style =
-                window
-                  .getComputedStyle(
-                    element
-                  );
-
-              return (
-                rect.width > 0 &&
-                rect.height > 0 &&
-                style.visibility !==
-                  'hidden' &&
-                style.display !==
-                  'none'
-              );
-            }
-          );
-
-      return (
-        visibleSelects.length >= 2
-      );
-    },
-    null,
-    {
       timeout:
         CONFIG.pageTimeoutMs
-    }
-  );
+    });
+
+  await page
+    .locator(
+      'mat-select'
+    )
+    .nth(1)
+    .waitFor({
+      state:
+        'visible',
+
+      timeout:
+        CONFIG.pageTimeoutMs
+    });
 }
 
 
 /* ============================================================
- * CAMPOS Y OPCIONES
+ * SELECTORES DE ANGULAR MATERIAL
  * ============================================================
  */
 
-async function findFormField(
-  page,
-  keyword
-) {
-  const fields =
-    page.locator(
-      'mat-form-field'
-    );
-
-  const count =
-    await fields.count();
-
-  const normalizedKeyword =
-    normalizeText(keyword)
-      .toLowerCase();
-
-  for (
-    let index = 0;
-    index < count;
-    index++
-  ) {
-    const field =
-      fields.nth(index);
-
-    if (
-      !await field
-        .isVisible()
-        .catch(
-          () => false
-        )
-    ) {
-      continue;
-    }
-
-    const text =
-      normalizeText(
-        await field
-          .innerText()
-          .catch(
-            () => ''
-          )
-      ).toLowerCase();
-
-    if (
-      text.includes(
-        normalizedKeyword
-      )
-    ) {
-      return field;
-    }
-  }
-
-  throw new Error(
-    'No se encontró el campo: ' +
-    keyword
-  );
-}
-
-
 async function waitForSelectEnabled(
-  select
+  select,
+  timeoutMs =
+    CONFIG.actionTimeoutMs
 ) {
-  for (
-    let attempt = 0;
-    attempt < 60;
-    attempt++
+  const startedAt =
+    Date.now();
+
+  while (
+    Date.now() -
+      startedAt <
+    timeoutMs
   ) {
     const ariaDisabled =
       await select.getAttribute(
@@ -846,7 +810,7 @@ async function waitForSelectEnabled(
     await select
       .page()
       .waitForTimeout(
-        500
+        300
       );
   }
 
@@ -856,105 +820,155 @@ async function waitForSelectEnabled(
 }
 
 
-async function waitForVisibleOptions(
-  page
+async function openMaterialOptions(
+  page,
+  select,
+  label
 ) {
-  await page.waitForFunction(
-    () => {
-      const options =
-        Array.from(
-          document.querySelectorAll(
-            '[role="option"], mat-option'
-          )
-        );
+  let lastError =
+    null;
 
-      return options.some(
-        element => {
-          const rect =
-            element
-              .getBoundingClientRect();
+  for (
+    let attempt = 1;
+    attempt <= 4;
+    attempt++
+  ) {
+    console.log(
+      'Intento ' +
+      attempt +
+      ' para abrir ' +
+      label +
+      '.'
+    );
 
-          const style =
-            window
-              .getComputedStyle(
-                element
-              );
-
-          return (
-            rect.width > 0 &&
-            rect.height > 0 &&
-            style.visibility !==
-              'hidden' &&
-            style.display !==
-              'none'
-          );
-        }
+    await page.keyboard
+      .press('Escape')
+      .catch(
+        () => {}
       );
-    },
-    null,
-    {
-      timeout:
-        CONFIG.actionTimeoutMs
+
+    await page.waitForTimeout(
+      300
+    );
+
+    const trigger =
+      select
+        .locator(
+          '.mat-mdc-select-trigger, ' +
+          '.mat-select-trigger'
+        )
+        .first();
+
+    try {
+      if (
+        await trigger.count()
+      ) {
+        await trigger.click({
+          timeout:
+            8000
+        });
+
+      } else {
+        await select.click({
+          timeout:
+            8000
+        });
+      }
+
+    } catch (error) {
+      lastError =
+        error;
+
+      try {
+        await select.click({
+          force:
+            true,
+
+          timeout:
+            8000
+        });
+
+      } catch (forceError) {
+        lastError =
+          forceError;
+      }
     }
+
+    const options =
+      page.locator(
+        '.cdk-overlay-pane [role="option"], ' +
+        '.cdk-overlay-pane mat-option'
+      );
+
+    try {
+      await options
+        .first()
+        .waitFor({
+          state:
+            'visible',
+
+          timeout:
+            6000
+        });
+
+      return options;
+
+    } catch (error) {
+      lastError =
+        error;
+    }
+
+    try {
+      await select.focus();
+
+      await select.press(
+        'Enter'
+      );
+
+      await options
+        .first()
+        .waitFor({
+          state:
+            'visible',
+
+          timeout:
+            6000
+        });
+
+      return options;
+
+    } catch (error) {
+      lastError =
+        error;
+    }
+  }
+
+  throw new Error(
+    'No se pudo abrir el selector de ' +
+    label +
+    '. Último error: ' +
+    (
+      lastError?.message ||
+      'desconocido'
+    )
   );
 }
 
 
-async function getVisibleOptions(
-  page
-) {
-  const candidates =
-    page.locator(
-      '[role="option"], mat-option'
-    );
-
-  const count =
-    await candidates.count();
-
-  const visible = [];
-
-  for (
-    let index = 0;
-    index < count;
-    index++
-  ) {
-    const candidate =
-      candidates.nth(index);
-
-    if (
-      await candidate
-        .isVisible()
-        .catch(
-          () => false
-        )
-    ) {
-      visible.push(
-        candidate
-      );
-    }
-  }
-
-  return visible;
-}
-
-
-async function selectMatOption(
+async function selectMaterialOption(
   page,
-  fieldKeyword,
-  optionText
+  selectIndex,
+  targetText,
+  label
 ) {
-  const field =
-    await findFormField(
-      page,
-      fieldKeyword
-    );
-
   const select =
-    field
+    page
       .locator(
         'mat-select'
       )
-      .first();
+      .nth(
+        selectIndex
+      );
 
   await select.waitFor({
     state:
@@ -971,32 +985,46 @@ async function selectMatOption(
   await select
     .scrollIntoViewIfNeeded();
 
-  await select.click({
-    force: true
-  });
-
-  await waitForVisibleOptions(
-    page
-  );
-
   const options =
-    await getVisibleOptions(
-      page
+    await openMaterialOptions(
+      page,
+      select,
+      label
     );
 
-  const normalizedTarget =
-    normalizeText(optionText)
-      .toLowerCase();
+  const optionCount =
+    await options.count();
 
-  const descriptions = [];
+  const normalizedTarget =
+    normalizeText(
+      targetText
+    ).toLowerCase();
+
+  const descriptions =
+    [];
 
   let selectedOption =
     null;
 
   for (
-    const option of options
+    let index = 0;
+    index < optionCount;
+    index++
   ) {
-    const fullText =
+    const option =
+      options.nth(index);
+
+    if (
+      !await option
+        .isVisible()
+        .catch(
+          () => false
+        )
+    ) {
+      continue;
+    }
+
+    const text =
       normalizeText(
         await option
           .innerText()
@@ -1006,11 +1034,11 @@ async function selectMatOption(
       );
 
     descriptions.push(
-      fullText
+      text
     );
 
     if (
-      fullText
+      text
         .toLowerCase()
         .includes(
           normalizedTarget
@@ -1032,12 +1060,14 @@ async function selectMatOption(
         () => {}
       );
 
-    throw new Error(
-      'No se encontró "' +
-      optionText +
-      '". Opciones: ' +
+    console.log(
+      'No se encontró ' +
+      targetText +
+      '. Opciones: ' +
       descriptions.join(' | ')
     );
+
+    return false;
   }
 
   const ariaDisabled =
@@ -1075,7 +1105,7 @@ async function selectMatOption(
 
     console.log(
       'La opción ' +
-      optionText +
+      targetText +
       ' está deshabilitada.'
     );
 
@@ -1089,9 +1119,22 @@ async function selectMatOption(
     )
   );
 
-  await selectedOption.click({
-    force: true
-  });
+  await selectedOption
+    .click({
+      timeout:
+        10_000
+    })
+    .catch(
+      async () => {
+        await selectedOption.click({
+          force:
+            true,
+
+          timeout:
+            10_000
+        });
+      }
+    );
 
   await page.waitForTimeout(
     900
@@ -1109,15 +1152,11 @@ async function selectMatOption(
 async function openTargetCalendar(
   page
 ) {
-  const dateField =
-    await findFormField(
-      page,
-      'fecha'
-    );
-
   const input =
-    dateField
-      .locator('input')
+    page
+      .locator(
+        'input[matinput][readonly]'
+      )
       .first();
 
   await input.waitFor({
@@ -1140,9 +1179,22 @@ async function openTargetCalendar(
         () => false
       )
   ) {
-    await input.click({
-      force: true
-    });
+    await input
+      .click({
+        timeout:
+          8000
+      })
+      .catch(
+        async () => {
+          await input.click({
+            force:
+              true,
+
+            timeout:
+              8000
+          });
+        }
+      );
   }
 
   await calendar.waitFor({
@@ -1152,6 +1204,38 @@ async function openTargetCalendar(
     timeout:
       CONFIG.actionTimeoutMs
   });
+}
+
+
+async function waitForCalendarLabelChange(
+  periodButton,
+  previousLabel
+) {
+  for (
+    let attempt = 0;
+    attempt < 30;
+    attempt++
+  ) {
+    await periodButton
+      .page()
+      .waitForTimeout(
+        250
+      );
+
+    const currentLabel =
+      normalizeText(
+        await periodButton.innerText()
+      );
+
+    if (
+      currentLabel !==
+      normalizeText(
+        previousLabel
+      )
+    ) {
+      return;
+    }
+  }
 }
 
 
@@ -1214,13 +1298,13 @@ async function navigateCalendarToTargetMonth(
       difference === 0
     ) {
       await page.waitForTimeout(
-        1200
+        1000
       );
 
       return;
     }
 
-    const navigationButton =
+    const button =
       difference > 0
         ? page.locator(
           '.mat-calendar-next-button:visible'
@@ -1229,7 +1313,7 @@ async function navigateCalendarToTargetMonth(
           '.mat-calendar-previous-button:visible'
         );
 
-    const monthResponse =
+    const responsePromise =
       page
         .waitForResponse(
           response =>
@@ -1245,22 +1329,38 @@ async function navigateCalendarToTargetMonth(
 
           {
             timeout:
-              CONFIG.actionTimeoutMs
+              12_000
           }
         )
         .catch(
           () => null
         );
 
-    await navigationButton.click({
-      force: true
-    });
+    await button
+      .click({
+        timeout:
+          8000
+      })
+      .catch(
+        async () => {
+          await button.click({
+            force:
+              true,
 
-    await monthResponse;
+            timeout:
+              8000
+          });
+        }
+      );
 
-    await page.waitForTimeout(
-      700
-    );
+    await Promise.all([
+      responsePromise,
+
+      waitForCalendarLabelChange(
+        periodButton,
+        label
+      )
+    ]);
   }
 
   throw new Error(
@@ -1269,7 +1369,7 @@ async function navigateCalendarToTargetMonth(
 }
 
 
-async function selectTargetDay(
+async function findTargetDayCell(
   page,
   targetDate
 ) {
@@ -1287,15 +1387,16 @@ async function selectTargetDay(
       targetMonth
     ];
 
-  const candidates =
+  const cells =
     page.locator(
-      'mat-calendar:visible button.mat-calendar-body-cell'
+      'mat-calendar:visible ' +
+      'button.mat-calendar-body-cell'
     );
 
   const count =
-    await candidates.count();
+    await cells.count();
 
-  let targetCell =
+  let fallback =
     null;
 
   for (
@@ -1303,12 +1404,12 @@ async function selectTargetDay(
     index < count;
     index++
   ) {
-    const candidate =
-      candidates.nth(index);
+    const cell =
+      cells.nth(index);
 
     const text =
       normalizeText(
-        await candidate
+        await cell
           .innerText()
           .catch(
             () => ''
@@ -1322,19 +1423,14 @@ async function selectTargetDay(
       continue;
     }
 
-    if (
-      !targetCell
-    ) {
-      targetCell =
-        candidate;
-    }
+    fallback ??=
+      cell;
 
     const ariaLabel =
       normalizeText(
-        await candidate
-          .getAttribute(
-            'aria-label'
-          )
+        await cell.getAttribute(
+          'aria-label'
+        )
       ).toLowerCase();
 
     if (
@@ -1345,54 +1441,65 @@ async function selectTargetDay(
         monthName
       )
     ) {
-      targetCell =
-        candidate;
-
-      break;
+      return cell;
     }
   }
 
+  return fallback;
+}
+
+
+async function selectTargetDay(
+  page,
+  targetDate
+) {
+  const cell =
+    await findTargetDayCell(
+      page,
+      targetDate
+    );
+
   if (
-    !targetCell
+    !cell
   ) {
     throw new Error(
       'No se encontró el día ' +
-      targetDay +
+      targetDate.getUTCDate() +
       ' en el calendario.'
     );
   }
 
   const ariaDisabled =
-    await targetCell.getAttribute(
+    await cell.getAttribute(
       'aria-disabled'
     );
 
-  const disabledAttribute =
-    await targetCell.getAttribute(
+  const disabled =
+    await cell.getAttribute(
       'disabled'
     );
 
   const className =
     String(
-      await targetCell.getAttribute(
+      await cell.getAttribute(
         'class'
       ) || ''
     );
 
-  const disabled =
+  const isDisabled =
     ariaDisabled === 'true' ||
-    disabledAttribute !== null ||
+    disabled !== null ||
     className.includes(
       'mat-calendar-body-disabled'
     ) ||
-    await targetCell
+    await cell
       .isDisabled()
       .catch(
         () => false
       );
 
   if (
-    disabled
+    isDisabled
   ) {
     console.log(
       'La fecha está deshabilitada.'
@@ -1401,12 +1508,50 @@ async function selectTargetDay(
     return false;
   }
 
-  await targetCell.click({
-    force: true
-  });
+  const scheduleResponse =
+    page
+      .waitForResponse(
+        response =>
+          response
+            .url()
+            .includes(
+              '/visita/consulta-horarios'
+            ) &&
+          response
+            .request()
+            .method() ===
+            'POST',
+
+        {
+          timeout:
+            12_000
+        }
+      )
+      .catch(
+        () => null
+      );
+
+  await cell
+    .click({
+      timeout:
+        8000
+    })
+    .catch(
+      async () => {
+        await cell.click({
+          force:
+            true,
+
+          timeout:
+            8000
+        });
+      }
+    );
+
+  await scheduleResponse;
 
   await page.waitForTimeout(
-    1400
+    1000
   );
 
   return true;
@@ -1421,60 +1566,72 @@ async function selectTargetDay(
 async function readAvailableSlots(
   page
 ) {
-  let scheduleField;
+  const scheduleSelect =
+    page
+      .locator(
+        'mat-select'
+      )
+      .nth(2);
 
-  try {
-    scheduleField =
-      await findFormField(
-        page,
-        'horario'
-      );
-
-  } catch {
+  if (
+    !await scheduleSelect
+      .isVisible()
+      .catch(
+        () => false
+      )
+  ) {
     console.log(
-      'No apareció el campo de horarios.'
+      'No apareció el selector de horarios.'
     );
 
     return [];
   }
 
-  const select =
-    scheduleField
-      .locator(
-        'mat-select'
-      )
-      .first();
-
-  await select.waitFor({
-    state:
-      'visible',
-
-    timeout:
-      CONFIG.actionTimeoutMs
-  });
-
-  await waitForSelectEnabled(
-    select
-  );
-
-  await select.click({
-    force: true
-  });
-
-  await waitForVisibleOptions(
-    page
-  );
-
-  const options =
-    await getVisibleOptions(
-      page
+  try {
+    await waitForSelectEnabled(
+      scheduleSelect,
+      10_000
     );
 
-  const slots = [];
+  } catch {
+    console.log(
+      'El selector de horarios está deshabilitado.'
+    );
+
+    return [];
+  }
+
+  const options =
+    await openMaterialOptions(
+      page,
+      scheduleSelect,
+      'horarios'
+    );
+
+  const count =
+    await options.count();
+
+  const slots =
+    [];
 
   for (
-    const option of options
+    let index = 0;
+    index < count;
+    index++
   ) {
+    const option =
+      options.nth(index);
+
+    if (
+      !await option
+        .isVisible()
+        .catch(
+          () => false
+        )
+    ) {
+      continue;
+    }
+
     const text =
       normalizeText(
         await option
@@ -1509,7 +1666,7 @@ async function readAvailableSlots(
 
     const seatsMatch =
       text.match(
-        /(\d+)\s+(?:boletos?|entradas?|cupos?)/i
+        /(\d+)\s*(?:boletos?|entradas?|cupos?)/i
       );
 
     console.log(
@@ -1567,9 +1724,38 @@ async function checkRoute(
     CONFIG.actionTimeoutMs
   );
 
+  await page.route(
+    '**/*',
+    async routeRequest => {
+      const url =
+        routeRequest
+          .request()
+          .url();
+
+      if (
+        isIgnoredRequest(
+          url
+        )
+      ) {
+        await routeRequest.abort();
+
+      } else {
+        await routeRequest.continue();
+      }
+    }
+  );
+
   page.on(
     'requestfailed',
     request => {
+      if (
+        isIgnoredRequest(
+          request.url()
+        )
+      ) {
+        return;
+      }
+
       console.warn(
         'Solicitud fallida:',
         request.url(),
@@ -1591,6 +1777,30 @@ async function checkRoute(
       route.name
     );
 
+    /*
+     * Se registra la espera antes de abrir la página.
+     */
+    const placeInfoPromise =
+      page
+        .waitForResponse(
+          response =>
+            response
+              .url()
+              .includes(
+                '/visita/lugar-info'
+              ) &&
+            response.status() ===
+              200,
+
+          {
+            timeout:
+              CONFIG.pageTimeoutMs
+          }
+        )
+        .catch(
+          () => null
+        );
+
     await page.goto(
       CONFIG.siteUrl,
       {
@@ -1602,32 +1812,39 @@ async function checkRoute(
       }
     );
 
+    await placeInfoPromise;
+
     await waitForPageReady(
       page
     );
 
+    await page.waitForTimeout(
+      700
+    );
+
     const circuitSelected =
-      await selectMatOption(
+      await selectMaterialOption(
         page,
-        'circuito',
-        route.circuitText
+        0,
+        route.circuitText,
+        'circuito'
       );
 
     if (
       !circuitSelected
     ) {
-      return {
-        route,
-        processed: true,
-        routeEnabled: false,
-        dateEnabled: false,
-        slots: [],
-        matchingSlots: [],
-        error: null
-      };
+      throw new Error(
+        'No se encontró ' +
+        route.circuitText +
+        '.'
+      );
     }
 
-    const initialDatesResponse =
+    /*
+     * Se registra antes de seleccionar la ruta
+     * para no perder la respuesta de las fechas.
+     */
+    const datesResponse =
       page
         .waitForResponse(
           response =>
@@ -1643,7 +1860,7 @@ async function checkRoute(
 
           {
             timeout:
-              CONFIG.actionTimeoutMs
+              15_000
           }
         )
         .catch(
@@ -1651,10 +1868,11 @@ async function checkRoute(
         );
 
     const routeSelected =
-      await selectMatOption(
+      await selectMaterialOption(
         page,
-        'ruta',
-        route.routeText
+        1,
+        route.routeText,
+        'ruta'
       );
 
     if (
@@ -1671,7 +1889,7 @@ async function checkRoute(
       };
     }
 
-    await initialDatesResponse;
+    await datesResponse;
 
     await openTargetCalendar(
       page
@@ -1797,9 +2015,9 @@ function groupAvailabilityByRoute(
       );
   }
 
-  return Array.from(
-    groups.values()
-  );
+  return [
+    ...groups.values()
+  ];
 }
 
 
@@ -1813,7 +2031,7 @@ function buildAvailabilityBody(
     )
       .map(
         group => {
-          const slotsText =
+          const slots =
             group.slots
               .map(
                 item =>
@@ -1821,10 +2039,11 @@ function buildAvailabilityBody(
                   item.time +
                   ' — ' +
                   item.seats +
+                  ' ' +
                   (
                     item.seats === 1
-                      ? ' cupo'
-                      : ' cupos'
+                      ? 'cupo'
+                      : 'cupos'
                   )
               )
               .join('\n');
@@ -1835,7 +2054,7 @@ function buildAvailabilityBody(
             ' — ' +
             group.route.name +
             '\n' +
-            slotsText
+            slots
           );
         }
       )
@@ -1878,68 +2097,79 @@ function buildManualSummary(
   results,
   availableItems
 ) {
-  const processedCount =
+  const processed =
     results.filter(
       result =>
         result.processed
-    ).length;
+    );
 
-  const errorResults =
+  const errors =
     results.filter(
       result =>
         !result.processed
     );
 
-  const disabledRoutes =
+  const unavailableRoutes =
     results.filter(
       result =>
         result.processed &&
         !result.routeEnabled
     );
 
-  const availabilityText =
-    availableItems.length > 0
-      ? (
-        'Se encontraron cupos:\n\n' +
-        buildAvailabilityBody(
-          targetDate,
-          availableItems
-        )
-      )
-      : (
-        'No se encontraron rutas con al menos ' +
-        CONFIG.requiredTickets +
-        ' cupos disponibles.'
-      );
-
-  const notes = [];
+  const notes =
+    [];
 
   if (
-    disabledRoutes.length > 0
+    unavailableRoutes.length
   ) {
     notes.push(
       'Rutas no habilitadas en el portal: ' +
-      disabledRoutes
+      unavailableRoutes
         .map(
-          result =>
-            result.route.code
+          item =>
+            item.route.code
         )
         .join(', ')
     );
   }
 
   if (
-    errorResults.length > 0
+    errors.length
   ) {
     notes.push(
       'Rutas con error: ' +
-      errorResults
+      errors
         .map(
-          result =>
-            result.route.code
+          item =>
+            item.route.code
         )
         .join(', ')
     );
+  }
+
+  let resultText;
+
+  if (
+    processed.length === 0
+  ) {
+    resultText =
+      'No fue posible verificar la disponibilidad en ninguna ruta.';
+
+  } else if (
+    availableItems.length
+  ) {
+    resultText =
+      'Se encontraron cupos:\n\n' +
+      buildAvailabilityBody(
+        targetDate,
+        availableItems
+      );
+
+  } else {
+    resultText =
+      'No se encontraron rutas con al menos ' +
+      CONFIG.requiredTickets +
+      ' cupos disponibles.';
   }
 
   return (
@@ -1950,13 +2180,13 @@ function buildManualSummary(
     ) +
     '\n' +
     'Rutas procesadas: ' +
-    processedCount +
+    processed.length +
     ' de ' +
     ROUTES.length +
     '\n\n' +
-    availabilityText +
+    resultText +
     (
-      notes.length > 0
+      notes.length
         ? (
           '\n\n' +
           notes.join('\n')
@@ -1981,11 +2211,6 @@ async function main() {
   const target =
     getTomorrowInLima();
 
-  console.log(
-    'Fecha de mañana en Perú:',
-    target.iso
-  );
-
   const previousState =
     loadState();
 
@@ -1996,6 +2221,11 @@ async function main() {
         previousState.availableKeys
       )
       : new Set();
+
+  console.log(
+    'Fecha de mañana en Perú:',
+    target.iso
+  );
 
   const browser =
     await chromium.launch({
@@ -2009,11 +2239,6 @@ async function main() {
 
       timezoneId:
         CONFIG.timeZone,
-
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-        'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-        'Chrome/149.0.0.0 Safari/537.36',
 
       viewport: {
         width:
@@ -2030,11 +2255,12 @@ async function main() {
     });
 
   try {
-    const results = [];
+    const results =
+      [];
 
     /*
-     * Revisa las rutas una por una para no
-     * sobrecargar el portal.
+     * Revisa las rutas una por una para
+     * no sobrecargar el portal.
      */
     for (
       const route of ROUTES
@@ -2054,44 +2280,79 @@ async function main() {
         resolve =>
           setTimeout(
             resolve,
-            700
+            500
           )
       );
     }
 
-    const availableItems = [];
+    const availableItems =
+      results
+        .flatMap(
+          result =>
+            result.matchingSlots.map(
+              slot => ({
+                key:
+                  result.route.code +
+                  '|' +
+                  slot.time,
 
-    for (
-      const result of results
-    ) {
-      for (
-        const slot of
-        result.matchingSlots
-      ) {
-        availableItems.push({
-          key:
-            result.route.code +
-            '|' +
-            slot.time,
+                route:
+                  result.route,
 
-          route:
-            result.route,
+                time:
+                  slot.time,
 
-          time:
-            slot.time,
-
-          seats:
-            slot.seats
-        });
-      }
-    }
-
-    availableItems.sort(
-      (a, b) =>
-        a.key.localeCompare(
-          b.key
+                seats:
+                  slot.seats
+              })
+            )
         )
-    );
+        .sort(
+          (a, b) =>
+            a.key.localeCompare(
+              b.key
+            )
+        );
+
+    /*
+     * Si una ruta falló, se conserva su estado anterior
+     * para evitar falsas alertas repetidas.
+     */
+    const failedRouteCodes =
+      new Set(
+        results
+          .filter(
+            result =>
+              !result.processed
+          )
+          .map(
+            result =>
+              result.route.code
+          )
+      );
+
+    const preservedKeys =
+      [
+        ...previousKeys
+      ].filter(
+        key => {
+          const routeCode =
+            key.split('|')[0];
+
+          return failedRouteCodes.has(
+            routeCode
+          );
+        }
+      );
+
+    const stateKeys = [
+      ...preservedKeys,
+
+      ...availableItems.map(
+        item =>
+          item.key
+      )
+    ];
 
     const newAvailableItems =
       availableItems.filter(
@@ -2101,14 +2362,14 @@ async function main() {
           )
       );
 
-    const processedRoutes =
+    const processedCount =
       results.filter(
         result =>
           result.processed
-      );
+      ).length;
 
     const allRoutesFailed =
-      processedRoutes.length === 0;
+      processedCount === 0;
 
     console.log(
       JSON.stringify(
@@ -2117,7 +2378,7 @@ async function main() {
             target.iso,
 
           processedRoutes:
-            processedRoutes.length,
+            processedCount,
 
           availableItems,
 
@@ -2129,8 +2390,8 @@ async function main() {
     );
 
     /*
-     * Una ejecución manual siempre informa
-     * el resultado completo.
+     * Una ejecución manual siempre envía
+     * el resumen completo.
      */
     if (
       CONFIG.notifyStatus
@@ -2167,8 +2428,13 @@ async function main() {
       );
     }
 
+    /*
+     * En automático, informa una sola vez
+     * si fallan las diez rutas.
+     */
     if (
       allRoutesFailed &&
+      !CONFIG.notifyStatus &&
       !previousState.allRoutesFailed
     ) {
       await sendTelegram(
@@ -2182,14 +2448,15 @@ async function main() {
 
     saveState(
       target.iso,
-      availableItems,
+      stateKeys,
       allRoutesFailed
     );
 
     if (
       allRoutesFailed
     ) {
-      process.exitCode = 1;
+      process.exitCode =
+        1;
     }
 
   } finally {
