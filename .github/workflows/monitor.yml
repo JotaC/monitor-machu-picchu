@@ -1,20 +1,17 @@
 name: Monitor Machu Picchu
 
 on:
-  # Permite ejecutar una prueba manual desde GitHub.
+  # Permite iniciar una prueba manual.
   workflow_dispatch:
 
-  # Se ejecuta cada 10 minutos.
-  # Usamos los minutos 7, 17, 27... para evitar la mayor
-  # congestión que suele producirse al inicio de cada hora.
+  # Ejecuta el monitor aproximadamente cada 10 minutos.
   schedule:
     - cron: "7,17,27,37,47,57 * * * *"
 
-# Necesario para guardar state.json dentro del repositorio.
 permissions:
   contents: write
 
-# Evita que dos revisiones se ejecuten simultáneamente.
+# Impide que dos revisiones modifiquen state.json simultáneamente.
 concurrency:
   group: monitor-machu-picchu
   cancel-in-progress: false
@@ -22,39 +19,65 @@ concurrency:
 jobs:
   revisar-disponibilidad:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+
+    # Se revisan diez rutas, por lo que dejamos
+    # un margen máximo de veinte minutos.
+    timeout-minutes: 20
 
     env:
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       CHAT_ID: ${{ secrets.CHAT_ID }}
 
-      TARGET_CIRCUIT: "Circuito 2"
-      TARGET_ROUTE: "Ruta 2-A"
-      TARGET_ROUTE_NAME: "Machupicchu Clásico"
-      TARGET_DATE: "2026-08-13"
+      # Solo considera suficiente un horario
+      # que tenga al menos cuatro cupos.
       REQUIRED_TICKETS: "4"
 
-      # Las pruebas manuales informan también cuando no hay cupos.
-      # Las revisiones automáticas solo avisan cuando encuentran entradas.
+      # La ejecución manual envía un resumen completo.
+      # Las automáticas solo avisan si aparecen cupos.
       NOTIFY_STATUS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
+          package-manager-cache: false
 
       - name: Instalar dependencias
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: Instalar Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Revisar disponibilidad
         run: npm run monitor
+
+      # La hora exacta cambia en cada revisión.
+      # La eliminamos antes del commit para guardar
+      # únicamente cambios reales de disponibilidad.
+      - name: Normalizar estado
+        if: always()
+        run: |
+          if [ -f state.json ]; then
+            node - <<'NODE'
+            const fs = require('node:fs');
+
+            const state = JSON.parse(
+              fs.readFileSync('state.json', 'utf8')
+            );
+
+            delete state.lastCheck;
+
+            fs.writeFileSync(
+              'state.json',
+              JSON.stringify(state, null, 2) + '\n',
+              'utf8'
+            );
+            NODE
+          fi
 
       - name: Guardar estado del monitor
         if: always()
@@ -65,23 +88,24 @@ jobs:
           fi
 
           git config user.name "Monitor Machu Picchu"
-          git config user.email "actions@github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add state.json
 
           if git diff --cached --quiet; then
-            echo "El estado no cambió."
+            echo "La disponibilidad no cambió."
             exit 0
           fi
 
           git commit -m "Actualizar estado del monitor [skip ci]"
+          git pull --rebase
           git push
 
-      - name: Guardar captura de diagnóstico
+      - name: Guardar diagnóstico
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnostico-${{ github.run_number }}
-          path: debug.png
+          path: diagnostico/
           if-no-files-found: ignore
           retention-days: 7
