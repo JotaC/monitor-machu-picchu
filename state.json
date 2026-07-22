@@ -1,5 +1,15 @@
 {
-  "targetDate": "2026-07-23",
-  "availableKeys": [],
-  "allRoutesFailed": false
+  "version": 2,
+  "alerts": {
+    "A20260722161210FAC735": {
+      "lastCheckedAt": "2026-07-22T21:28:26.260Z",
+      "targetDate": "2026-07-23",
+      "availableKeys": [],
+      "allRoutesFailed": false,
+      "frequencyMinutes": 10
+    }
+  },
+  "system": {
+    "lastApiErrorNotifiedAt": null
+  }
 }
