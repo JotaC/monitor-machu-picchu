@@ -340,12 +340,6 @@ El servicio puede dejar de funcionar temporal o definitivamente debido a:
 
 El creador del proyecto puede modificar, suspender o retirar el servicio en cualquier momento.
 
-## Instalación técnica
-
-Para instalar y configurar una copia propia del sistema, consulta:
-
-[INSTALLATION.md](INSTALLATION.md)
-
 ---
 
 # English
@@ -680,11 +674,6 @@ The service may stop working temporarily or permanently because of:
 
 The project creator may modify, suspend, or discontinue the service at any time.
 
-## Technical installation
-
-To install and configure your own copy of the system, see:
-
-[INSTALLATION.md](INSTALLATION.md)
 
 ---
 
