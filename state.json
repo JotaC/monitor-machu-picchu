@@ -2,14 +2,14 @@
   "version": 2,
   "alerts": {
     "A20260722182542334A11": {
-      "lastCheckedAt": "2026-09-08T17:47:46.438Z",
+      "lastCheckedAt": "2026-09-08T20:20:44.965Z",
       "targetDate": "2026-09-09",
       "availableKeys": [],
       "allRoutesFailed": true,
       "frequencyMinutes": 10
     },
     "A202607222113393CC348": {
-      "lastCheckedAt": "2026-09-08T17:47:46.438Z",
+      "lastCheckedAt": "2026-09-08T20:20:44.965Z",
       "targetDate": "2026-09-09",
       "availableKeys": [],
       "allRoutesFailed": true,
